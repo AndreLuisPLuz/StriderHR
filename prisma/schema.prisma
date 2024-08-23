@@ -1,0 +1,189 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Person {
+  id                String @id @default(uuid()) @db.Uuid
+  fullName          String @db.VarChar(255) @map("full_name")
+  birthDate         DateTime @db.Date @map("birth_date")
+  cpfCnpj           String @db.VarChar(14) @map("cnf_cnpj")
+  rg                String @db.VarChar(11)
+  email             String @db.VarChar(100)
+  personTypeBinary  Int @db.SmallInt @map("person_type_binary")
+
+  phones    Phone[]
+  addresses PersonAddress[]
+  employeeRole    Employee?
+  customerRole    Customer?
+  passengerRole   Passenger?
+
+  @@map("person")
+}
+
+enum PhoneType {
+  RESIDENTIAL
+  MOBILE
+  @@map("phone_type")
+}
+
+model Phone {
+  id      String @id @default(uuid()) @db.Uuid
+  ownerId String @db.Uuid @map("owner")
+  number  String @db.VarChar(11)
+  type    PhoneType
+
+  owner Person @relation(fields: [ownerId], references: [id])
+
+  @@map("phone")
+}
+
+model Address {
+  id              String @id @default(uuid()) @db.Uuid
+  street          String @db.VarChar(100)
+  neighbourhood   String @db.VarChar(100)
+  number          Int
+  city            String @db.VarChar(100)
+  state           String @db.VarChar(100)
+  isCompanyAsset  Boolean @map("is_company_asset")
+
+  denizens PersonAddress[]
+  itinerariesFrom Itinerary[] @relation("OriginAddress")
+  itinerariesTo   Itinerary[] @relation("DestinationAddress")
+
+  @@map("address")
+}
+
+model PersonAddress {
+  personId    String @db.Uuid @map("person_id")
+  addressId   String @db.Uuid @map("address_id")
+
+  person    Person @relation(fields: [personId], references: [id])
+  address   Address @relation(fields: [addressId], references: [id])
+
+  @@id([personId, addressId])
+  @@map("person_address")
+}
+
+enum Position {
+  DRIVER
+  ASSISTANT
+
+  @@map("position")
+}
+
+model Employee {
+  personId          String @id @db.Uuid @map("person_id")
+  admissionDate     DateTime @db.Date @map("admission_date")
+  dailyCheckinHour  DateTime @db.Time() @map("daily_checkin_hour")
+  dailyCheckoutHour DateTime @db.Time() @map("daily_checkout_hour")
+  position          Position
+  monthlyWages      Decimal @db.Decimal(7, 5) @map("monthly_wages")
+
+  person  Person @relation(fields: [personId], references: [id])
+  license License?
+
+  @@map("employee")
+}
+
+model Customer {
+  personId  String @id @db.Uuid @map("person_id")
+
+  person      Person @relation(fields: [personId], references: [id])
+  passengers  Passenger[]
+
+  @@map("customer")
+}
+
+model Passenger {
+  personId          String @id @db.Uuid @map("person_id")
+  liableCustomerId  String @db.Uuid @map("responsible_customer_id")
+
+  person          Person @relation(fields: [personId], references: [id])
+  liableCustomer  Customer @relation(fields: [liableCustomerId], references: [personId])
+  itineraries     ItineraryPassenger[]
+  trips           TripPassenger[]
+
+  @@map("passenger")
+}
+
+model License {
+  employeeId        String @id @db.Uuid @map("employee_id")
+  number            String @db.VarChar(11)
+  expiresAt         DateTime @db.Date @map("expires_at")
+  firstLicenseAt    DateTime @db.Date @map("first_license_at")
+  categoriesBinary  Int @db.SmallInt
+
+  employee  Employee @relation(fields: [employeeId], references: [personId])
+
+  @@map("license")
+}
+
+model Itinerary {
+  id                    String @id @default(uuid()) @db.Uuid
+  originAddressId       String @db.Uuid @map("origin_address_id")
+  destinationAddressId  String @db.Uuid @map("destination_address_id")
+  isRegular             Boolean @map("is_regular")
+
+  originAddress       Address @relation("OriginAddress", fields: [originAddressId], references: [id])
+  destinationAddress  Address @relation("DestinationAddress", fields: [destinationAddressId], references: [id])
+  calendar            ItineraryCalendar?
+  passengers          ItineraryPassenger[]
+  trips               Trip[]
+
+  @@map("itinerary")
+}
+
+model ItineraryCalendar {
+  itineraryId               String @id @db.Uuid @map("itinerary_id")
+  regularityBinary          Int @db.SmallInt @map("regularity_binary")
+  isActive                  Boolean @map("is_active")
+  programmedActivitySwitch  DateTime? @db.Date @map("programmed_activity_switch")
+
+  itinerary Itinerary @relation(fields: [itineraryId], references: [id])
+
+  @@map("itinerary_calendar")
+}
+
+model ItineraryPassenger {
+  itineraryId String @db.Uuid @map("itinerary_id")
+  passengerId String @db.Uuid @map("passenger_id")
+
+  itinerary Itinerary @relation(fields: [itineraryId], references: [id])
+  passenger Passenger @relation(fields: [passengerId], references: [personId])
+
+  @@id([itineraryId, passengerId])
+  @@map("itinerary_passenger")
+}
+
+model Trip {
+  id                    String @id @default(uuid()) @db.Uuid
+  itineraryId           String @db.Uuid @map("itinerary_id")
+  programmedStartDate   DateTime @map("programmed_start_date")
+  programmedFinishDate  DateTime @map("programmed_finish_date")
+  actualStartDate       DateTime? @map("actual_start_date")
+  actualFinishDate      DateTime? @map("actual_finish_date")
+
+  itinerary Itinerary @relation(fields: [itineraryId], references: [id])
+  passengers TripPassenger[]
+
+  @@map("trip")
+}
+
+model TripPassenger {
+  tripId        String @db.Uuid @map("trip_id")
+  passengerId   String @db.Uuid @map("passenger_id")
+  wasCancelled  Boolean @map("was_cancelled")
+  wasPresent    Boolean @map("was_present")
+  embarkedAt    DateTime? @map("embarked_at")
+
+  trip      Trip @relation(fields: [tripId], references: [id])
+  passenger Passenger @relation(fields: [passengerId], references: [personId])
+
+  @@id([tripId, passengerId])
+  @@map("trip_passenger")
+}
